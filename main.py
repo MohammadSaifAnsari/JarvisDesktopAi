@@ -1,12 +1,8 @@
 import speech_recognition as sr
-from playsound import playsound
 import win32com.client
-import webbrowser
-import datetime
-from AppOpener import open
+import commands
 
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
-
 
 def takeCommmand():
     r = sr.Recognizer()
@@ -19,45 +15,18 @@ def takeCommmand():
             print(f"User said: {query}")
             return query
         except Exception as e:
+            print(f"Speech recognition error: {e}")
             return "Some error occurred"
 
-
-while 1:
-    # print("Enter the word you want to speak by the computer")
-    # s = input()
-    speaker.Speak("Hello I am AI How can i help you")
+if __name__ == '__main__':
+    speaker.Speak("Hello, I am Jarvis. How can I assist you today?")
     while True:
         print("Listening...")
         query = takeCommmand()
-        print("Recog..")
+        print("Recognizing...")
 
-        # Add more sites
-        sites = [["YouTube", "https://www.youtube.com"], ["Wikipedia", "https://www.wikipedia.com"],
-                 ["Google", "https://www.google.com"], ]
-        for site in sites:
-            if f"open {site[0]}".lower() in query.lower():
-                speaker.Speak(f"Opening {site[0]} sir..")
-                # getting path
-                firefox_path = r"C:\Program Files\Mozilla Firefox\firefox.exe"
-                # First registers the new browser
-                webbrowser.register('firefox', None,
-                                    webbrowser.BackgroundBrowser(firefox_path))
-                webbrowser.get('firefox').open(site[1])
-
-        # Play music
-        if "open music" in query:
-            playsound('C:/Users/s.k.f.ansari/Downloads/Lemon Fight.mp3')
-
-        # Tell Time
-        if "time".lower() in query.lower():
-            strftime = datetime.datetime.now().strftime("%H:%M:%S")
-            speaker.Speak(f"Sir the time is{strftime}")
-
-        # Open Application
-        apps = ["WhatsApp", "excel", "Word","chrome","firefox","settings"]
-        for i in range(len(apps)):
-            if f"open {apps[i]}".lower() in query.lower():
-                speaker.Speak(f"Opening {apps[i]} sir..")
-                open(apps[i].lower())  # Opens whatsapp
-
-    #speaker.Speak(query)
+        if query != "Some error occurred":
+            if not commands.handle_command(query):
+                # You can add a default response if no command is matched
+                # speaker.Speak("Sorry, I don't understand that command.")
+                pass
