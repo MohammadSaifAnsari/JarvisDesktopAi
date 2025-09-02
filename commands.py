@@ -9,6 +9,7 @@ import spacy
 import difflib
 import subprocess
 import zipfile
+import shutil
 
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
 
@@ -33,12 +34,19 @@ def register_command(keywords):
 def handle_command(query):
     """
     Finds and executes a command based on the query.
-    Returns True if a command was found and executed, False otherwise.
+    Returns:
+    - A dictionary for confirmation actions.
+    - True for successful direct commands.
+    - False if no command was found.
     """
     query = query.lower()
     for keyword, func in _commands.items():
         if keyword in query:
-            func(query)
+            result = func(query)
+            # If the function returns a dictionary, pass it up for confirmation.
+            if isinstance(result, dict):
+                return result
+            # Otherwise, consider it a successful direct command.
             return True
     return False
 
@@ -215,23 +223,25 @@ def create_file_command(query):
 
 @register_command(["delete file"])
 def delete_file_command(query):
-    """Deletes a specified file."""
+    """Asks for confirmation before deleting a specified file."""
     # Assumes query is "delete file [path]"
     try:
         path = query.lower().split("delete file")[1].strip()
         if not path:
             speaker.Speak("Please specify a file path to delete.")
-            return
+            return None # Return None for no action
 
-        speaker.Speak(f"Attempting to delete file at {path}")
-        if os.path.exists(path):
-            os.remove(path)
-            speaker.Speak("File has been successfully deleted.")
-        else:
+        if not os.path.exists(path):
             speaker.Speak("Sorry, I could not find a file at that path.")
+            return None
+
+        # Return a dictionary to signal a confirmation action
+        return {'action': 'confirm_delete', 'path': path}
+
     except Exception as e:
-        print(f"Error deleting file: {e}")
-        speaker.Speak("Sorry, I encountered an error while trying to delete the file.")
+        print(f"Error preparing to delete file: {e}")
+        speaker.Speak("Sorry, I encountered an error while preparing the delete command.")
+        return None
 
 @register_command(["create directory"])
 def create_directory_command(query):
@@ -504,6 +514,40 @@ def brainstorm_solutions_command(query):
         print(f"Error brainstorming solutions: {e}")
         speaker.Speak("Sorry, I encountered an error while brainstorming.")
 
+@register_command(["develop slogan for"])
+def develop_slogan_command(query):
+    """Develops a marketing slogan for a product and its feature."""
+    # Assumes query is "develop slogan for [product] with feature [feature]"
+    try:
+        parts = query.lower().split(" with feature ")
+        if len(parts) != 2:
+            speaker.Speak("Sorry, I didn't understand the format. Please say 'develop slogan for [product] with feature [feature]'.")
+            return
+
+        product = parts[0].replace("develop slogan for", "").strip()
+        feature = parts[1].strip()
+
+        if not product or not feature:
+            speaker.Speak("Please specify both a product and a feature.")
+            return
+
+        templates = [
+            f"{product}: The best choice for all your {feature} needs.",
+            f"{product}: Redefining {feature}.",
+            f"Experience the future of {feature} with {product}.",
+            f"{product}: Unparalleled {feature}, unmatched quality.",
+            f"For the love of {feature}, choose {product}.",
+        ]
+
+        slogan = random.choice(templates)
+
+        speaker.Speak("Here is a slogan idea:")
+        speaker.Speak(slogan)
+
+    except Exception as e:
+        print(f"Error developing slogan: {e}")
+        speaker.Speak("Sorry, I encountered an error while developing a slogan.")
+
 # --- Meta Commands ---
 
 @register_command(["report status", "what can you do"])
@@ -526,3 +570,134 @@ def report_status_command(query):
     except Exception as e:
         print(f"Error reporting status: {e}")
         speaker.Speak("Sorry, I encountered an error while reporting my status.")
+
+@register_command(["confirm you can handle", "do you know how to"])
+def confirm_understanding_command(query):
+    """Checks if a given instruction matches any known command."""
+    try:
+        if "confirm you can handle" in query:
+            instruction = query.lower().split("confirm you can handle")[1].strip()
+        elif "do you know how to" in query:
+            instruction = query.lower().split("do you know how to")[1].strip()
+        else:
+            instruction = ""
+
+        if not instruction:
+            speaker.Speak("Please provide an instruction for me to check.")
+            return
+
+        found_command = None
+        for keyword in _commands.keys():
+            if keyword in instruction:
+                found_command = keyword
+                break
+
+        if found_command:
+            speaker.Speak(f"Yes, to handle the instruction '{instruction}', I would use my '{found_command}' command.")
+        else:
+            speaker.Speak(f"Sorry, I am not sure how to handle the instruction '{instruction}'. I do not have a specific command for that yet.")
+
+    except Exception as e:
+        print(f"Error confirming understanding: {e}")
+        speaker.Speak("Sorry, I encountered an error while trying to understand the instruction.")
+
+@register_command(["commit changes in"])
+def commit_changes_command(query):
+    """Adds all changes and commits them in a local Git repository."""
+    # Assumes query is "commit changes in [path] with message [message]"
+    try:
+        parts = query.lower().split(" with message ")
+        if len(parts) != 2:
+            speaker.Speak("Sorry, I didn't understand the format. Please say 'commit changes in [path] with message [your message]'.")
+            return
+
+        repo_path = parts[0].replace("commit changes in", "").strip()
+        commit_message = parts[1].strip()
+
+        if not repo_path or not commit_message:
+            speaker.Speak("Please specify both a repository path and a commit message.")
+            return
+
+        if not os.path.isdir(repo_path):
+            speaker.Speak("Sorry, the specified repository path does not exist or is not a directory.")
+            return
+
+        speaker.Speak(f"Staging all changes in {repo_path}.")
+
+        # Run git add
+        add_result = subprocess.run(['git', 'add', '.'], cwd=repo_path, capture_output=True, text=True)
+        if add_result.returncode != 0:
+            speaker.Speak("Sorry, I encountered an error while staging the changes.")
+            print(f"Git add error:\n{add_result.stderr}")
+            return
+
+        speaker.Speak("Committing changes.")
+
+        # Run git commit
+        commit_result = subprocess.run(['git', 'commit', '-m', commit_message], cwd=repo_path, capture_output=True, text=True)
+        if commit_result.returncode == 0:
+            speaker.Speak("Changes have been successfully committed.")
+            print(commit_result.stdout)
+        else:
+            speaker.Speak("Sorry, I encountered an error while committing the changes.")
+            # This can happen if there's nothing to commit, so we check the stderr
+            if "nothing to commit" in commit_result.stderr:
+                speaker.Speak("There were no changes to commit.")
+            print(f"Git commit error:\n{commit_result.stderr}")
+
+    except Exception as e:
+        print(f"Error committing changes: {e}")
+        speaker.Speak("Sorry, I encountered an error while committing changes.")
+
+# --- Utility Commands ---
+
+# Define file type mappings for the organize command
+_file_type_map = {
+    "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
+    "Documents": [".doc", ".docx", ".pdf", ".txt", ".rtf"],
+    "Archives": [".zip", ".rar", ".7z", ".tar", ".gz"],
+    "Audio": [".mp3", ".wav", ".aac", ".flac"],
+    "Video": [".mp4", ".mov", ".avi", ".mkv"],
+    "Scripts": [".py", ".js", ".sh", ".bat"],
+}
+
+@register_command(["organize directory"])
+def organize_directory_command(query):
+    """Organizes files in a directory into subfolders by file type."""
+    try:
+        path = query.lower().split("organize directory")[1].strip()
+        if not path:
+            speaker.Speak("Please specify a directory path to organize.")
+            return
+
+        if not os.path.isdir(path):
+            speaker.Speak("Sorry, the specified path is not a valid directory.")
+            return
+
+        speaker.Speak(f"Organizing files in {path}.")
+
+        # A counter for the summary report
+        moved_files_count = 0
+
+        for item in os.scandir(path):
+            if item.is_file():
+                file_ext = os.path.splitext(item.name)[1].lower()
+                moved = False
+                for dir_name, ext_list in _file_type_map.items():
+                    if file_ext in ext_list:
+                        target_dir = os.path.join(path, dir_name)
+                        if not os.path.exists(target_dir):
+                            os.makedirs(target_dir)
+                        shutil.move(item.path, target_dir)
+                        moved_files_count += 1
+                        moved = True
+                        break # Move to the next file once it's been moved
+
+        if moved_files_count > 0:
+            speaker.Speak(f"I have successfully organized the directory and moved {moved_files_count} files.")
+        else:
+            speaker.Speak("There were no files to organize, or all files were already organized.")
+
+    except Exception as e:
+        print(f"Error organizing directory: {e}")
+        speaker.Speak("Sorry, I encountered an error while organizing the directory.")
