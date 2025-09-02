@@ -6,6 +6,9 @@ from playsound import playsound
 from AppOpener import open
 import win32com.client
 import spacy
+import difflib
+import subprocess
+import zipfile
 
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
 
@@ -349,3 +352,177 @@ def identify_entities_command(query):
     except Exception as e:
         print(f"Error identifying entities: {e}")
         speaker.Speak("Sorry, I encountered an error while analyzing the sentence.")
+
+@register_command(["compare file", "compare files"])
+def compare_files_command(query):
+    """Compares two files and reports the differences."""
+    # Assumes query is "compare file [path1] and file [path2]"
+    try:
+        # Normalize the query
+        query = query.lower().replace("compare files", "compare file")
+        parts = query.split("compare file")[1].strip().split(" and file ")
+
+        if len(parts) != 2:
+            speaker.Speak("Sorry, I didn't understand the format. Please say 'compare file [path A] and file [path B]'.")
+            return
+
+        path_a, path_b = parts[0].strip(), parts[1].strip()
+
+        if not os.path.exists(path_a) or not os.path.exists(path_b):
+            speaker.Speak("Sorry, one or both of the files could not be found.")
+            return
+
+        speaker.Speak(f"Comparing file {os.path.basename(path_a)} and file {os.path.basename(path_b)}.")
+
+        with open(path_a, 'r', encoding='utf-8') as f_a:
+            lines_a = f_a.readlines()
+        with open(path_b, 'r', encoding='utf-8') as f_b:
+            lines_b = f_b.readlines()
+
+        diff = list(difflib.unified_diff(lines_a, lines_b, fromfile=os.path.basename(path_a), tofile=os.path.basename(path_b)))
+
+        if not diff:
+            speaker.Speak("The files are identical.")
+            return
+
+        diff_summary = [line for line in diff if line.startswith('+') or line.startswith('-')]
+
+        speaker.Speak(f"I found {len(diff_summary)} differing lines between the two files.")
+
+        print("--- File Comparison Diff ---")
+        for line in diff:
+            print(line, end='')
+        print("\n--- End of Diff ---")
+
+    except Exception as e:
+        print(f"Error comparing files: {e}")
+        speaker.Speak("Sorry, I encountered an error while comparing the files.")
+
+@register_command(["clone repository"])
+def clone_repository_command(query):
+    """Clones a Git repository from a URL to a local path."""
+    # Assumes query is "clone repository [url] to [path]"
+    try:
+        parts = query.lower().split(" to ")
+        if len(parts) != 2:
+            speaker.Speak("Sorry, I didn't understand the format. Please say 'clone repository [url] to [path]'.")
+            return
+
+        url_part = parts[0].replace("clone repository", "").strip()
+        path_part = parts[1].strip()
+
+        if not url_part or not path_part:
+            speaker.Speak("Please specify both a repository URL and a destination path.")
+            return
+
+        speaker.Speak(f"Cloning repository from {url_part} into {path_part}")
+
+        # Using subprocess for better security and control
+        result = subprocess.run(['git', 'clone', url_part, path_part], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            speaker.Speak("Repository has been successfully cloned.")
+            print(result.stdout)
+        else:
+            speaker.Speak("Sorry, I encountered an error while cloning the repository.")
+            print(f"Git clone error:\n{result.stderr}")
+
+    except Exception as e:
+        print(f"Error cloning repository: {e}")
+        speaker.Speak("Sorry, I encountered an error while trying to clone the repository.")
+
+@register_command(["compress file"])
+def compress_file_command(query):
+    """Compresses a single file into a zip archive."""
+    # Assumes query is "compress file [source_path] to [zip_path]"
+    try:
+        parts = query.lower().split(" to ")
+        if len(parts) != 2:
+            speaker.Speak("Sorry, I didn't understand the format. Please say 'compress file [source path] to [destination zip path]'.")
+            return
+
+        source_path = parts[0].replace("compress file", "").strip()
+        zip_path = parts[1].strip()
+
+        if not source_path or not zip_path:
+            speaker.Speak("Please specify both a source file and a destination zip path.")
+            return
+
+        if not os.path.exists(source_path):
+            speaker.Speak("Sorry, the source file does not exist.")
+            return
+
+        speaker.Speak(f"Compressing {os.path.basename(source_path)} into {os.path.basename(zip_path)}.")
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(source_path, os.path.basename(source_path))
+
+        speaker.Speak("File has been successfully compressed.")
+
+    except Exception as e:
+        print(f"Error compressing file: {e}")
+        speaker.Speak("Sorry, I encountered an error while compressing the file.")
+
+# --- Creative & Reasoning Commands ---
+
+_brainstorming_map = {
+    "writer's block": [
+        "Try the Pomodoro Technique: write for 25 minutes, then take a 5-minute break.",
+        "Just start writing anything that comes to mind, even if it's not perfect.",
+        "Change your environment. Go to a coffee shop or a library.",
+        "Read a book or article on a new topic to get inspired.",
+    ],
+    "being unproductive": [
+        "Break down large tasks into smaller, more manageable steps.",
+        "Use the two-minute rule: if a task takes less than two minutes, do it now.",
+        "Schedule your tasks and stick to the schedule.",
+        "Make sure to get enough sleep and exercise.",
+    ],
+    "learning a new skill": [
+        "Set clear, achievable goals.",
+        "Practice consistently, even if it's just for a short time each day.",
+        "Find a mentor or a community to learn with.",
+        "Teach what you've learned to someone else to solidify your knowledge.",
+    ]
+}
+
+@register_command(["brainstorm solutions for"])
+def brainstorm_solutions_command(query):
+    """Provides a list of generic solutions for a common problem."""
+    try:
+        problem = query.lower().split("brainstorm solutions for")[1].strip()
+
+        if problem in _brainstorming_map:
+            speaker.Speak(f"Here are some ideas for {problem}:")
+            solutions = _brainstorming_map[problem]
+            for i, solution in enumerate(solutions):
+                speaker.Speak(f"Idea {i+1}: {solution}")
+        else:
+            speaker.Speak(f"Sorry, I don't have any specific ideas for {problem}. My knowledge in this area is still growing.")
+
+    except Exception as e:
+        print(f"Error brainstorming solutions: {e}")
+        speaker.Speak("Sorry, I encountered an error while brainstorming.")
+
+# --- Meta Commands ---
+
+@register_command(["report status", "what can you do"])
+def report_status_command(query):
+    """Reports the status of the AI by listing all available commands."""
+    try:
+        speaker.Speak("I am online and ready to help. I currently know how to do the following:")
+
+        # Get a unique list of command keywords
+        command_keywords = sorted(list(_commands.keys()))
+
+        # Create a more readable string
+        command_list_str = ", ".join(command_keywords)
+
+        print(f"Available commands: {command_list_str}")
+        speaker.Speak(command_list_str)
+
+        speaker.Speak("What would you like me to do?")
+
+    except Exception as e:
+        print(f"Error reporting status: {e}")
+        speaker.Speak("Sorry, I encountered an error while reporting my status.")
