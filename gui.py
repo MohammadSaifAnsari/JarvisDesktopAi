@@ -36,6 +36,9 @@ class App(ctk.CTk):
     def update_status(self, text):
         self.status_label.configure(text=f"Status: {text}")
 
+    def clear_textbox(self):
+        self.textbox.delete("1.0", "end")
+
 if __name__ == "__main__":
     app = App()
     app.mainloop()
