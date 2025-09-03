@@ -1,0 +1,8 @@
+customtkinter
+SpeechRecognition
+pyttsx3
+playsound
+AppOpener
+spacy
+psutil
+pyperclip
