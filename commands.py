@@ -1,3 +1,11 @@
+"""
+This module manages all the voice commands for the J.A.R.V.I.S. assistant.
+
+It uses a decorator-based registration system to map keywords to specific
+command functions. The `CommandManager` class is responsible for interpreting
+user queries and executing the corresponding actions, from telling the time to
+managing files.
+"""
 import datetime
 import webbrowser
 import random
@@ -19,16 +27,49 @@ import pyperclip
 # Command registry
 _commands = {}
 
+
 def register_command(keywords):
-    """A decorator to register a new command."""
+    """
+    A decorator to register a function as a voice command.
+
+    This decorator maps a list of keywords to a command function. When any of
+    the keywords are detected in a user's query, the decorated function will be
+    called.
+
+    Args:
+        keywords (list of str): A list of keywords that trigger the command.
+
+    Returns:
+        function: The decorator function.
+    """
     def decorator(func):
         for keyword in keywords:
             _commands[keyword.lower()] = func
+        # Mark the function so we can find it later
+        func.is_command = True
+        func.keywords = keywords
         return func
     return decorator
 
+
 class CommandManager:
+    """
+    Manages the registration, discovery, and execution of commands.
+
+    This class loads NLP models, handles incoming queries by matching them to
+    registered commands, and executes the relevant function.
+
+    Attributes:
+        assistant (Assistant): The main assistant instance.
+        nlp: The spaCy NLP model for natural language processing.
+    """
     def __init__(self, assistant):
+        """
+        Initializes the CommandManager.
+
+        Args:
+            assistant (Assistant): The main assistant instance to interact with the GUI and TTS.
+        """
         self.assistant = assistant
         self.nlp = None
         try:
@@ -37,21 +78,29 @@ class CommandManager:
             print("Spacy 'en_core_web_sm' model not found. Run 'python -m spacy download en_core_web_sm'")
             self.assistant.speak("The natural language processing model is not loaded. Some commands may not work.")
 
-        # Register all command methods
+        # This part of the original code for registration is redundant if all commands are methods.
+        # The decorator now handles registration directly into the global _commands dict.
+        # If commands could be defined outside this class, this loop would be necessary.
+        # For now, keeping the logic but noting its current limited use.
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if callable(attr) and hasattr(attr, 'is_command'):
-                keywords = getattr(attr, 'keywords')
-                for keyword in keywords:
-                    _commands[keyword.lower()] = attr
+                # This registration is already done by the decorator.
+                # It's harmless to re-register but is not strictly necessary.
+                pass
 
     def handle_command(self, query):
         """
-        Finds and executes a command based on the query.
+        Finds and executes a command based on the user's query.
+
+        It first checks for any easter eggs, then iterates through the registered
+        commands to find a match.
+
+        Args:
+            query (str): The user's voice command, converted to lowercase text.
+
         Returns:
-        - A dictionary for confirmation actions.
-        - True for successful direct commands.
-        - False if no command was found.
+            bool: True if a command or easter egg was handled, False otherwise.
         """
         query = query.lower()
         if self.handle_easter_eggs(query):
@@ -59,22 +108,28 @@ class CommandManager:
 
         for keyword, func in _commands.items():
             if query.startswith(keyword):
-                result = func(query)
-                if isinstance(result, dict):
-                    # Handle confirmation actions, e.g., for file deletion
+                # Pass the full query to the command function
+                result = func(self, query)
+                if isinstance(result, dict) and 'action' in result:
                     self.handle_confirmation(result)
                 return True
         return False
 
     def handle_confirmation(self, action):
-        """Handles the confirmation logic for sensitive actions."""
+        """
+        Handles confirmation steps for sensitive actions like file deletion.
+
+        This method prompts the user for confirmation and waits for a "yes"
+        response before proceeding with the action.
+
+        Args:
+            action (dict): A dictionary describing the action to confirm.
+                           Example: {'action': 'confirm_delete', 'path': '/path/to/file'}
+        """
         if action['action'] == 'confirm_delete':
             path_to_delete = action['path']
-            self.assistant.speak(f"Are you sure you want to delete the file at {os.path.basename(path_to_delete)}? Please say yes to confirm.")
+            self.assistant.speak(f"Are you sure you want to delete {os.path.basename(path_to_delete)}? Please say yes to confirm.")
 
-            # This requires a way to get a one-off response.
-            # For now, we will proceed with a placeholder response.
-            # In a real scenario, this would need to listen for a specific "yes" response.
             confirmation_query = self.assistant.take_command().lower()
 
             if "yes" in confirmation_query:
@@ -90,6 +145,12 @@ class CommandManager:
     # --- Meta and Basic Commands ---
     @register_command(["report status", "what can you do"])
     def report_status_command(self, query):
+        """
+        Reports the assistant's status and lists available commands.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak("I am online and ready. I can:")
         command_list_str = ", ".join(sorted(_commands.keys()))
         print(f"Available commands: {command_list_str}")
@@ -97,24 +158,56 @@ class CommandManager:
 
     @register_command(["time"])
     def tell_time(self, query):
+        """
+        Tells the current time.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak(f"The time is {datetime.datetime.now().strftime('%H:%M:%S')}")
 
     @register_command(["date"])
     def tell_date(self, query):
+        """
+        Tells the current date.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak(f"The date is {datetime.datetime.now().strftime('%A, %d %B %Y')}")
 
     @register_command(["day of the week"])
     def tell_day(self, query):
+        """
+        Tells the current day of the week.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak(f"Today is {datetime.datetime.now().strftime('%A')}")
 
     @register_command(["exit", "stop"])
     def exit_app(self, query):
+        """
+        Exits the application.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak("Goodbye!")
         self.assistant.app.quit()
 
     # --- Website and App Opening ---
     @register_command(["open"])
     def open_command(self, query):
+        """
+        Opens a website or a local application.
+
+        Examples: "open youtube", "open chrome"
+
+        Args:
+            query (str): The user's command, e.g., "open google".
+        """
         target = query.replace("open", "").strip()
         sites = {"youtube": "https://www.youtube.com", "wikipedia": "https://www.wikipedia.com", "google": "https://www.google.com", "github": "https://www.github.com"}
         apps = {"excel": "localc", "word": "lowriter", "chrome": "google-chrome", "firefox": "firefox", "settings": "gnome-control-center", "calculator": "gnome-calculator"}
@@ -124,7 +217,6 @@ class CommandManager:
             webbrowser.open(sites[target])
         elif target in apps:
             self.assistant.speak(f"Opening {target}...")
-            # Using open_app for wider compatibility
             try:
                 open_app(target)
             except Exception as e:
@@ -136,6 +228,14 @@ class CommandManager:
     # --- Search Commands ---
     @register_command(["search"])
     def search_command(self, query):
+        """
+        Searches for a term on Google, Wikipedia, or YouTube.
+
+        Example: "search google for cats"
+
+        Args:
+            query (str): The search command, e.g., "search wikipedia for Albert Einstein".
+        """
         term = query.split("for")[-1].strip()
         if "wikipedia for" in query:
             self.assistant.speak(f"Searching Wikipedia for {term}...")
@@ -152,7 +252,13 @@ class CommandManager:
     # --- File Management ---
     @register_command(["list files"])
     def list_files(self, query):
-        path = '.' # Or parse from query
+        """
+        Lists files in the current directory.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
+        path = '.'  # Can be extended to parse a path from the query
         self.assistant.speak("Here are the files in the current directory:")
         try:
             files = os.listdir(path)
@@ -163,6 +269,14 @@ class CommandManager:
 
     @register_command(["create file"])
     def create_file(self, query):
+        """
+        Creates a file with specified content.
+
+        Example: "create file my_file.txt with content hello world"
+
+        Args:
+            query (str): The command containing the file path and content.
+        """
         match = re.search(r"create file (.*) with content (.*)", query)
         if match:
             path, content = match.groups()
@@ -173,38 +287,75 @@ class CommandManager:
             except Exception as e:
                 self.assistant.speak(f"Error creating file: {e}")
         else:
-            self.assistant.speak("Format: create file [path] with content [content]")
+            self.assistant.speak("Please use the format: create file [path] with content [content]")
 
     @register_command(["delete file"])
     def delete_file(self, query):
+        """
+        Deletes a specified file after confirmation.
+
+        Example: "delete file my_file.txt"
+
+        Args:
+            query (str): The command containing the file path.
+
+        Returns:
+            dict or None: A dictionary to trigger confirmation, or None if file not found.
+        """
         match = re.search(r"delete file (.*)", query)
         if match:
             path = match.group(1).strip()
             if not os.path.exists(path):
                 self.assistant.speak("Sorry, I could not find a file at that path.")
                 return None
-            # Return dict for confirmation
             return {'action': 'confirm_delete', 'path': path}
         else:
-            self.assistant.speak("Format: delete file [path]")
+            self.assistant.speak("Please use the format: delete file [path]")
 
     # --- Fun & Informational ---
     @register_command(["tell me a joke"])
     def tell_joke(self, query):
+        """
+        Tells a random joke.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         jokes = ["Why don't scientists trust atoms? Because they make up everything!"]
         self.assistant.speak(random.choice(jokes))
 
     @register_command(["tell me a fun fact"])
     def tell_fun_fact(self, query):
+        """
+        Tells a random fun fact.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         facts = ["A group of flamingos is called a 'flamboyance'."]
         self.assistant.speak(random.choice(facts))
 
     @register_command(["what is your name"])
     def what_is_your_name(self, query):
+        """
+        States the assistant's name.
+
+        Args:
+            query (str): The user's command query (unused).
+        """
         self.assistant.speak("My name is JARVIS.")
 
     # --- Easter Eggs ---
     def handle_easter_eggs(self, query):
+        """
+        Handles hidden, fun commands (easter eggs).
+
+        Args:
+            query (str): The user's full command query.
+
+        Returns:
+            bool: True if an easter egg was found and handled, False otherwise.
+        """
         eggs = {
             "do a barrel roll": "Okay, here I go! Wee!",
             "make me a sandwich": "What? Make it yourself.",

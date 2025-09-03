@@ -1,8 +1,30 @@
+"""
+This module contains the graphical user interface for the J.A.R.V.I.S. desktop assistant.
+
+It uses the customtkinter library to create a modern, themed UI. The main window
+provides a text box for conversation history, a status label, and a button to
+activate the assistant.
+"""
 import customtkinter as ctk
 from assistant import Assistant
 
+
 class App(ctk.CTk):
+    """
+    The main application window for the J.A.R.V.I.S. assistant.
+
+    This class initializes the UI components, including the textbox for displaying
+    conversation, a status label, and the 'Start Listening' button. It also
+    manages the interaction with the Assistant instance.
+
+    Attributes:
+        textbox (ctk.CTkTextbox): The text area for showing user and AI messages.
+        status_label (ctk.CTkLabel): A label to show the assistant's current status.
+        button (ctk.CTkButton): The button to start the voice recognition.
+        assistant (Assistant): An instance of the assistant logic.
+    """
     def __init__(self):
+        """Initializes the main application window and its widgets."""
         super().__init__()
 
         ctk.set_appearance_mode("dark")
@@ -26,18 +48,39 @@ class App(ctk.CTk):
         self.assistant = Assistant(self)
 
     def start_assistant(self):
+        """
+        Disables the button and starts the assistant's listening thread.
+
+        This method is called when the 'Start Listening' button is clicked. It
+        updates the button to show a 'Listening...' state and prevents further clicks
+        while the assistant is active.
+        """
         self.button.configure(state="disabled", text="Listening...")
         self.assistant.start()
 
     def update_textbox(self, text):
+        """
+        Appends a new message to the conversation textbox.
+
+        Args:
+            text (str): The text to add to the textbox.
+        """
         self.textbox.insert("end", text + "\n")
         self.textbox.see("end")
 
     def update_status(self, text):
+        """
+        Updates the status label with a new message.
+
+        Args:
+            text (str): The new status text to display.
+        """
         self.status_label.configure(text=f"Status: {text}")
 
     def clear_textbox(self):
+        """Clears all text from the conversation textbox."""
         self.textbox.delete("1.0", "end")
+
 
 if __name__ == "__main__":
     app = App()
